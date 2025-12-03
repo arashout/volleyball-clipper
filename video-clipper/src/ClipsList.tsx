@@ -33,17 +33,23 @@ export function ClipsList({ clips, onExport, onClear, onDelete, onSeek }: ClipsL
         {[...clips].reverse().map((clip, reversedIndex) => {
           const originalIndex = clips.length - 1 - reversedIndex;
           return (
-            <li key={originalIndex} className="flex justify-between items-center p-2 bg-gray-900 rounded font-mono text-sm">
+            <li 
+            key={originalIndex} 
+            className="flex justify-between items-center px-4 py-1 bg-gray-900 rounded font-mono text-sm"
+            >
+              <span>
+                Clip {originalIndex + 1}
+              </span>
               <span
                 onClick={() => onSeek(clip.startTime)}
                 className="cursor-pointer hover:text-gray-300"
               >
-                Clip {originalIndex + 1}: {formatTime(clip.startTime)} → {formatTime(clip.endTime!)}
+                {formatTime(clip.startTime)} → {formatTime(clip.endTime!)}
                 {' '}({formatTime((clip.endTime! - clip.startTime))} duration)
               </span>
               <button
                 onClick={() => onDelete(originalIndex)}
-                className="bg-gray-800 text-white border border-gray-700 px-3 py-1 rounded text-xs cursor-pointer hover:bg-gray-700"
+                className="bg-gray-800 text-white border border-gray-700 p-2 rounded text-xs cursor-pointer hover:bg-gray-700"
               >
                 Delete
               </button>
