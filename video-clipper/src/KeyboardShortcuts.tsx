@@ -35,6 +35,7 @@ export function KeyboardShortcuts() {
           <ButtonControl keyboardKey="I" label="Mark clip start" />
           <ButtonControl keyboardKey="O" label="Mark clip end" />
           <ButtonControl keyboardKey="D" label="Delete last/current clip" />
+          <ButtonControl keyboardKey="S" label="Export clips JSON" />
         </div>
       </div>
     </div>

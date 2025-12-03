@@ -5,6 +5,7 @@ import { VideoTimeline } from './VideoTimeline';
 import { VideoControls } from './VideoControls';
 import { ClipsList } from './ClipsList';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
+import { saveClipsToLocalStorage, loadClipsFromLocalStorage } from './localStorage';
 
 export function VideoPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,7 +57,7 @@ export function VideoPlayer() {
       if (!video || !videoSrc) return;
 
       // Prevent default behavior for keys we're using
-      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD'].includes(e.code)) {
+      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD', 'KeyS'].includes(e.code)) {
         e.preventDefault();
       }
 
@@ -96,23 +97,26 @@ export function VideoPlayer() {
           break;
 
         case 'KeyO':
-          // Mark clip end
           if (currentClip && currentClip.endTime === null) {
             const completedClip = { ...currentClip, endTime: video.currentTime };
-            setClips([...clips, completedClip]);
+            const newClips = [...clips, completedClip];
+            setClips(newClips);
             setCurrentClip(null);
+            saveClipsToLocalStorage(videoFileName, newClips);
           }
           break;
 
         case 'KeyD':
-          // Delete current clip or last clip
           if (currentClip) {
-            // Cancel current clip in progress
             setCurrentClip(null);
           } else if (clips.length > 0) {
-            // Delete the last clip
-            setClips(clips.slice(0, -1));
+            const newClips = clips.slice(0, -1);
+            setClips(newClips);
           }
+          break;
+
+        case 'KeyS':
+          exportClips();
           break;
 
         case 'Comma':
@@ -133,7 +137,7 @@ export function VideoPlayer() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isPlaying, currentClip, clips, playbackRate, videoSrc]);
+  }, [isPlaying, currentClip, clips, playbackRate, videoSrc, videoFileName]);
 
   const exportClips = () => {
     const data = JSON.stringify(clips, null, 2);
@@ -148,10 +152,13 @@ export function VideoPlayer() {
 
   const clearClips = () => {
     setClips([]);
+    saveClipsToLocalStorage(videoFileName, []);
   };
 
   const deleteClip = (index: number) => {
-    setClips(clips.filter((_, i) => i !== index));
+    const newClips = clips.filter((_, i) => i !== index);
+    setClips(newClips);
+    saveClipsToLocalStorage(videoFileName, newClips);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -166,8 +173,13 @@ export function VideoPlayer() {
       // Extract filename without extension
       const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
       setVideoFileName(nameWithoutExt);
-      // Reset clips when loading new video
-      setClips([]);
+      // Try to load clips from localStorage
+      const savedClips = loadClipsFromLocalStorage(nameWithoutExt);
+      if (savedClips) {
+        setClips(savedClips);
+      } else {
+        setClips([]);
+      }
       setCurrentClip(null);
     }
   };
