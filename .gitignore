@@ -12,3 +12,4 @@ wheels/
 
 # data
 data/original_videos
+data/clip_data/*.json

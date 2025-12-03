@@ -1,89 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-
-interface Clip {
-  startTime: number;
-  endTime: number | null;
-}
-
-function ButtonControl({
-  keyboardKey,
-  label,
-}: {
-  keyboardKey: string;
-  label: string;
-}){
-  return <div className="flex items-center gap-2 font-mono">
-    <span>{label}</span>
-    <kbd className="bg-gray-800 border border-gray-700 rounded px-1.5 py-0.5 text-xs">{keyboardKey}</kbd>
-  </div>
-}
-
-interface VideoTimelineProps {
-  currentTime: number;
-  duration: number;
-  clips: Clip[];
-  onSeek: (time: number) => void;
-}
-
-function VideoTimeline({ currentTime, duration, clips, onSeek }: VideoTimelineProps) {
-  const timelineRef = useRef<HTMLDivElement>(null);
-
-  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!timelineRef.current || duration === 0) return;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percentage = x / rect.width;
-    const time = percentage * duration;
-    onSeek(Math.max(0, Math.min(duration, time)));
-  };
-
-  const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-  return (
-    <div className="space-y-2">
-      <div
-        ref={timelineRef}
-        onClick={handleClick}
-        className="relative h-8 bg-gray-900 rounded cursor-pointer"
-      >
-        {/* Progress bar */}
-        <div
-          className="absolute h-full bg-white rounded transition-all"
-          style={{ width: `${progressPercentage}%` }}
-        />
-
-        {/* Clip markers */}
-        {clips.map((clip, index) => {
-          if (!clip.endTime || duration === 0) return null;
-          const startPercent = (clip.startTime / duration) * 100;
-          const endPercent = (clip.endTime / duration) * 100;
-          const width = endPercent - startPercent;
-
-          return (
-            <div
-              key={index}
-              className="absolute h-full bg-gray-500 opacity-50"
-              style={{
-                left: `${startPercent}%`,
-                width: `${width}%`,
-              }}
-            />
-          );
-        })}
-
-        {/* Current time indicator */}
-        <div
-          className="absolute top-0 w-1 h-full bg-white"
-          style={{ left: `${progressPercentage}%` }}
-        />
-      </div>
-    </div>
-  );
-}
+import { Clip } from './types';
+import { formatTime } from './utils';
+import { VideoTimeline } from './VideoTimeline';
+import { VideoControls } from './VideoControls';
+import { ClipsList } from './ClipsList';
+import { KeyboardShortcuts } from './KeyboardShortcuts';
 
 export function VideoPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const clipsInputRef = useRef<HTMLInputElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -91,6 +17,7 @@ export function VideoPlayer() {
   const [clips, setClips] = useState<Clip[]>([]);
   const [currentClip, setCurrentClip] = useState<Clip | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [videoFileName, setVideoFileName] = useState<string>('clips');
 
   const handleLoadedVideo = () => {
     const video = videoRef.current;
@@ -129,7 +56,7 @@ export function VideoPlayer() {
       if (!video || !videoSrc) return;
 
       // Prevent default behavior for keys we're using
-      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyS'].includes(e.code)) {
+      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD'].includes(e.code)) {
         e.preventDefault();
       }
 
@@ -177,6 +104,17 @@ export function VideoPlayer() {
           }
           break;
 
+        case 'KeyD':
+          // Delete current clip or last clip
+          if (currentClip) {
+            // Cancel current clip in progress
+            setCurrentClip(null);
+          } else if (clips.length > 0) {
+            // Delete the last clip
+            setClips(clips.slice(0, -1));
+          }
+          break;
+
         case 'Comma':
           // Decrease playback speed
           const newSlowerRate = Math.max(0.25, playbackRate - 0.25);
@@ -197,20 +135,13 @@ export function VideoPlayer() {
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isPlaying, currentClip, clips, playbackRate, videoSrc]);
 
-  const formatTime = (time: number) => {
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    const milliseconds = Math.floor((time % 1) * 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}.${milliseconds.toString().padStart(3, '0')}`;
-  };
-
   const exportClips = () => {
     const data = JSON.stringify(clips, null, 2);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'clips.json';
+    a.download = `${videoFileName}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -232,14 +163,39 @@ export function VideoPlayer() {
       }
       const url = URL.createObjectURL(file);
       setVideoSrc(url);
+      // Extract filename without extension
+      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+      setVideoFileName(nameWithoutExt);
       // Reset clips when loading new video
       setClips([]);
       setCurrentClip(null);
     }
   };
 
+  const handleClipsLoad = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && file.type === 'application/json') {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const loadedClips = JSON.parse(event.target?.result as string);
+          if (Array.isArray(loadedClips)) {
+            setClips(loadedClips);
+          }
+        } catch (error) {
+          console.error('Error parsing clips JSON:', error);
+        }
+      };
+      reader.readAsText(file);
+    }
+  };
+
   const openFilePicker = () => {
     fileInputRef.current?.click();
+  };
+
+  const openClipsPicker = () => {
+    clipsInputRef.current?.click();
   };
 
   const seekToTime = (time: number) => {
@@ -263,27 +219,17 @@ export function VideoPlayer() {
       </div>
 
       <div className="p-6 bg-gray-800 max-h-[50vh] overflow-y-auto space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="text-2xl font-bold font-mono">
-            <span>{formatTime(currentTime)}</span>
-            <span className="px-2"> / </span>
-            <span>{formatTime(duration)}</span>
-            <span className="text-lg pl-5"> {playbackRate}x</span>
-          </div>
-          <button
-            onClick={openFilePicker}
-            className="bg-white text-black border-none px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-300"
-          >
-            Load Video
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/*"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-        </div>
+        <VideoControls
+          currentTime={currentTime}
+          duration={duration}
+          playbackRate={playbackRate}
+          onLoadVideo={openFilePicker}
+          fileInputRef={fileInputRef}
+          onFileSelect={handleFileSelect}
+          onLoadClips={openClipsPicker}
+          clipsInputRef={clipsInputRef}
+          onClipsSelect={handleClipsLoad}
+        />
 
         <VideoTimeline
           currentTime={currentTime}
@@ -298,64 +244,15 @@ export function VideoPlayer() {
           </div>
         )}
 
-        <div className="flex flex-col w-full items-center">
-          <h3 className="pb-2 text-lg">Keyboard Shortcuts</h3>
-          <div className="flex gap-8 flex-wrap text-sm">
-            <div className="flex flex-col gap-2">
-              <ButtonControl keyboardKey="←" label="Back 1 frame" />
-              <ButtonControl keyboardKey="J" label="Back 5 seconds" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <ButtonControl keyboardKey="→" label="Forward 1 frame" />
-              <ButtonControl keyboardKey="L" label="Forward 5 seconds" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <ButtonControl keyboardKey="Space" label="Play/Pause" />
-              <ButtonControl keyboardKey="," label="Slower (0.25x)" />
-              <ButtonControl keyboardKey="." label="Faster (0.25x)" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <ButtonControl keyboardKey="I" label="Mark clip start" />
-              <ButtonControl keyboardKey="O" label="Mark clip end" />
-            </div>
-          </div>
-        </div>
+        <KeyboardShortcuts />
 
-        {clips.length > 0 && (
-          <div className="border-t border-gray-700 pt-6">
-            <h3 className="pb-2 text-lg">Clips ({clips.length})</h3>
-            <div className="flex gap-2 pb-4">
-              <button
-                onClick={exportClips}
-                className="bg-white text-black border-none px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-300"
-              >
-                Export Clips JSON
-              </button>
-              <button
-                onClick={clearClips}
-                className="bg-gray-900 text-white border border-gray-700 px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-950"
-              >
-                Clear All
-              </button>
-            </div>
-            <ul className="list-none p-0 space-y-2">
-              {clips.map((clip, index) => (
-                <li key={index} className="flex justify-between items-center p-2 bg-gray-900 rounded font-mono text-sm">
-                  <span>
-                    Clip {index + 1}: {formatTime(clip.startTime)} → {formatTime(clip.endTime!)}
-                    {' '}({formatTime((clip.endTime! - clip.startTime))} duration)
-                  </span>
-                  <button
-                    onClick={() => deleteClip(index)}
-                    className="bg-gray-800 text-white border border-gray-700 px-3 py-1 rounded text-xs cursor-pointer hover:bg-gray-700"
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+        <ClipsList
+          clips={clips}
+          onExport={exportClips}
+          onClear={clearClips}
+          onDelete={deleteClip}
+          onSeek={seekToTime}
+        />
       </div>
     </div>
   );

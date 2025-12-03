@@ -5,7 +5,9 @@
       "Bash(npm install)",
       "Bash(rm:*)",
       "Bash(npm install:*)",
-      "Bash(npx tailwindcss:*)"
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx tsc:*)"
     ],
     "deny": [
       "Bash(git:commit:*)",
