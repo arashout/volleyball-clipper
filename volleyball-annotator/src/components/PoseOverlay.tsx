@@ -1,12 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
-import { PersonPose, COCO_SKELETON_CONNECTIONS } from '../pose/types';
-
-interface BBox {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
+import { COCO_SKELETON_CONNECTIONS } from '../pose/types';
+import { useVideoPlayer } from '../useVideoPlayer';
 
 interface DrawingState {
   startX: number;
@@ -15,29 +9,18 @@ interface DrawingState {
   currentY: number;
 }
 
-interface PoseOverlayProps {
-  videoRef: React.RefObject<HTMLVideoElement | null>;
-  poseData: PersonPose[] | null;
-  showBboxes?: boolean;
-  showSkeletons?: boolean;
-  showLabels?: boolean;
-  pendingLabel?: string | null;
-  onPersonClick?: (personIndex: number) => void;
-  onCustomBboxDraw?: (bbox: BBox) => void;
-  canvasRef: React.RefObject<HTMLCanvasElement | null>;
-}
+export function PoseOverlay() {
+  const {
+    videoRef,
+    poseCanvasRef: canvasRef,
+    poseData,
+    showSkeletons,
+    showLabels,
+    pendingLabel,
+    setPendingLabel,
+    addActionAnnotation,
+  } = useVideoPlayer();
 
-export function PoseOverlay({
-  videoRef,
-  poseData,
-  showBboxes = true,
-  showSkeletons = true,
-  showLabels = true,
-  pendingLabel = null,
-  onPersonClick,
-  onCustomBboxDraw,
-  canvasRef,
-}: PoseOverlayProps) {
   const [drawing, setDrawing] = useState<DrawingState | null>(null);
 
   useEffect(() => {
@@ -48,10 +31,16 @@ export function PoseOverlay({
     const updateDimensions = () => {
       const rect = video.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) return;
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
+      canvas.width = video.videoWidth || rect.width;
+      canvas.height = video.videoHeight || rect.height;
       canvas.style.width = `${rect.width}px`;
       canvas.style.height = `${rect.height}px`;
+      console.log('Updated canvas dimensions', {
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        videoWidth: video.videoWidth,
+        videoHeight: video.videoHeight
+      });
     };
 
     updateDimensions();
@@ -70,11 +59,16 @@ export function PoseOverlay({
       window.removeEventListener('resize', updateDimensions);
       resizeObserver.disconnect();
     };
-  }, [videoRef]);
+  }, [videoRef, canvasRef]);
 
   const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      console.log('Canvas ref is null');
+      return;
+    }
+
+    console.log('Drawing canvas', { width: canvas.width, height: canvas.height, poseData: poseData?.length });
 
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -84,20 +78,19 @@ export function PoseOverlay({
       const bboxColor = 'rgba(0, 100, 255, 0.9)';
 
       poseData.forEach((person, idx) => {
-        if (showBboxes) {
-          ctx.strokeStyle = bboxColor;
-          ctx.lineWidth = 1;
-          ctx.strokeRect(person.bbox.x, person.bbox.y, person.bbox.width, person.bbox.height);
+        console.log('Drawing person bbox', person.bbox);
+        ctx.strokeStyle = bboxColor;
+        ctx.lineWidth = 3;
+        ctx.strokeRect(person.bbox.x, person.bbox.y, person.bbox.width, person.bbox.height);
 
-          if (showLabels) {
-            ctx.fillStyle = bboxColor;
-            ctx.font = 'bold 16px monospace';
-            ctx.fillText(
-              `Person ${idx + 1}: ${(person.bbox.confidence * 100).toFixed(1)}%`,
-              person.bbox.x,
-              person.bbox.y - 5
-            );
-          }
+        if (showLabels) {
+          ctx.fillStyle = bboxColor;
+          ctx.font = 'bold 16px monospace';
+          ctx.fillText(
+            `Person ${idx + 1}: ${(person.bbox.confidence * 100).toFixed(1)}%`,
+            person.bbox.x,
+            person.bbox.y - 5
+          );
         }
 
         if (showSkeletons) {
@@ -139,7 +132,7 @@ export function PoseOverlay({
       ctx.strokeRect(x, y, width, height);
       ctx.setLineDash([]);
     }
-  }, [poseData, showBboxes, showSkeletons, showLabels, drawing, canvasRef]);
+  }, [poseData, showSkeletons, showLabels, drawing, canvasRef]);
 
   useEffect(() => {
     drawCanvas();
@@ -175,20 +168,46 @@ export function PoseOverlay({
     };
   };
 
+  const handlePersonClick = (personIndex: number) => {
+    if (!pendingLabel || !poseData || !videoRef.current) return;
+
+    const person = poseData[personIndex];
+    addActionAnnotation({
+      time: videoRef.current.currentTime,
+      label: pendingLabel,
+      bbox: {
+        x: person.bbox.x,
+        y: person.bbox.y,
+        width: person.bbox.width,
+        height: person.bbox.height,
+      },
+    });
+    setPendingLabel(null);
+  };
+
+  const handleCustomBboxDraw = (bbox: { x: number; y: number; width: number; height: number }) => {
+    if (!pendingLabel || !videoRef.current) return;
+
+    addActionAnnotation({
+      time: videoRef.current.currentTime,
+      label: pendingLabel,
+      bbox,
+    });
+    setPendingLabel(null);
+  };
+
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!pendingLabel) return;
 
     const { x, y } = getCanvasCoords(e);
     const personIndex = isPointInBoundingBox(x, y);
 
-    if (personIndex !== null && onPersonClick) {
-      onPersonClick(personIndex);
+    if (personIndex !== null) {
+      handlePersonClick(personIndex);
       return;
     }
 
-    if (onCustomBboxDraw) {
-      setDrawing({ startX: x, startY: y, currentX: x, currentY: y });
-    }
+    setDrawing({ startX: x, startY: y, currentX: x, currentY: y });
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -214,7 +233,7 @@ export function PoseOverlay({
   };
 
   const handleMouseUp = () => {
-    if (!drawing || !onCustomBboxDraw) {
+    if (!drawing) {
       setDrawing(null);
       return;
     }
@@ -225,7 +244,7 @@ export function PoseOverlay({
     const height = Math.abs(drawing.currentY - drawing.startY);
 
     if (width > 5 && height > 5) {
-      onCustomBboxDraw({ x, y, width, height });
+      handleCustomBboxDraw({ x, y, width, height });
     }
 
     setDrawing(null);
@@ -243,4 +262,3 @@ export function PoseOverlay({
     />
   );
 }
-

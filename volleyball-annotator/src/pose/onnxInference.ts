@@ -1,9 +1,10 @@
 import * as ort from 'onnxruntime-web';
 
 let session: ort.InferenceSession | null = null;
+let currentModelPath: string | null = null;
 
 export async function loadModel(modelPath: string): Promise<void> {
-  if (session) return;
+  if (session && currentModelPath === modelPath) return;
 
   ort.env.wasm.wasmPaths = '/volleyball-annotator/node_modules/onnxruntime-web/dist/';
 
@@ -11,6 +12,7 @@ export async function loadModel(modelPath: string): Promise<void> {
     executionProviders: ['wasm'],
     graphOptimizationLevel: 'all'
   });
+  currentModelPath = modelPath;
 }
 
 export async function runInference(

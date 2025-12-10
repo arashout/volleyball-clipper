@@ -1,6 +1,6 @@
 import { useRef } from 'react';
-import { Clip, ActionAnnotation } from './types';
 import { ACTION_LABELS } from './annotations';
+import { useVideoPlayer } from './useVideoPlayer';
 
 const LABEL_COLORS: Record<string, string> = {
   ball: '#f59e0b',
@@ -11,15 +11,8 @@ const LABEL_COLORS: Record<string, string> = {
   serve: '#ec4899',
 };
 
-interface VideoTimelineProps {
-  currentTime: number;
-  duration: number;
-  clips: Clip[];
-  actionAnnotations: ActionAnnotation[];
-  onSeek: (time: number) => void;
-}
-
-export function VideoTimeline({ currentTime, duration, clips, actionAnnotations, onSeek }: VideoTimelineProps) {
+export function VideoTimeline() {
+  const { currentTime, duration, clips, actionAnnotations, seekToTime } = useVideoPlayer();
   const timelineRef = useRef<HTMLDivElement>(null);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -28,7 +21,7 @@ export function VideoTimeline({ currentTime, duration, clips, actionAnnotations,
     const x = e.clientX - rect.left;
     const percentage = x / rect.width;
     const time = percentage * duration;
-    onSeek(Math.max(0, Math.min(duration, time)));
+    seekToTime(Math.max(0, Math.min(duration, time)));
   };
 
   const progressPercentage = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -40,13 +33,11 @@ export function VideoTimeline({ currentTime, duration, clips, actionAnnotations,
         onClick={handleClick}
         className="relative h-8 bg-gray-900 rounded cursor-pointer"
       >
-        {/* Progress bar */}
         <div
           className="absolute h-full bg-white rounded transition-all"
           style={{ width: `${progressPercentage}%` }}
         />
 
-        {/* Clip markers */}
         {clips.map((clip, index) => {
           if (!clip.endTime || duration === 0) return null;
           const startPercent = (clip.startTime / duration) * 100;
@@ -65,7 +56,6 @@ export function VideoTimeline({ currentTime, duration, clips, actionAnnotations,
           );
         })}
 
-        {/* Action annotation markers */}
         {actionAnnotations.map((annotation, index) => {
           if (duration === 0) return null;
           const posPercent = (annotation.time / duration) * 100;
@@ -85,14 +75,12 @@ export function VideoTimeline({ currentTime, duration, clips, actionAnnotations,
           );
         })}
 
-        {/* Current time indicator */}
         <div
           className="absolute top-0 w-1 h-full bg-white"
           style={{ left: `${progressPercentage}%` }}
         />
       </div>
 
-      {/* Legend for action labels */}
       {actionAnnotations.length > 0 && (
         <div className="flex gap-3 text-xs mt-1">
           {ACTION_LABELS.map((label) => {
