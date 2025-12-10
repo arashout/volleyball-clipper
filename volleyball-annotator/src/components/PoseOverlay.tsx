@@ -80,7 +80,7 @@ export function PoseOverlay() {
       poseData.forEach((person, idx) => {
         console.log('Drawing person bbox', person.bbox);
         ctx.strokeStyle = bboxColor;
-        ctx.lineWidth = 3;
+        ctx.lineWidth = 1;
         ctx.strokeRect(person.bbox.x, person.bbox.y, person.bbox.width, person.bbox.height);
 
         if (showLabels) {

@@ -1,3 +1,4 @@
 - [ ] Save annotations locally per clip
 - [ ] Export Annotations in YOLO format
 - [ ] Fix bug with backwards button
+- [ ] Move labels / clips to sidebar

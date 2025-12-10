@@ -12,6 +12,7 @@ export function VideoControls() {
     openClipsPicker,
     continuousPoseAnalysis,
     setContinuousPoseAnalysis,
+    clearPoseOverlay,
     slowOnPendingLabel,
     setSlowOnPendingLabel,
     showSkeletons,
@@ -51,7 +52,12 @@ export function VideoControls() {
             Load Clips
           </button>
           <button
-            onClick={() => setContinuousPoseAnalysis(!continuousPoseAnalysis)}
+            onClick={() => {
+              if (continuousPoseAnalysis) {
+                clearPoseOverlay();
+              }
+              setContinuousPoseAnalysis(!continuousPoseAnalysis);
+            }}
             className={`border-none px-5 py-2.5 rounded cursor-pointer font-bold ${
               continuousPoseAnalysis
                 ? 'bg-green-600 text-white hover:bg-green-700'

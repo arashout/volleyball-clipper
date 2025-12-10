@@ -112,7 +112,10 @@ function VideoPlayerInner() {
           break;
 
         case 'KeyP':
-          setContinuousPoseAnalysis(prev => !prev);
+          setContinuousPoseAnalysis(prev => {
+            if (prev) clearPoseOverlay();
+            return !prev;
+          });
           break;
 
         case 'Comma': {
