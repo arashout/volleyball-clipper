@@ -28,11 +28,11 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-        working-directory: ./video-clipper
+        working-directory: ./volleyball-annotator
 
       - name: Build
         run: npm run build
-        working-directory: ./video-clipper
+        working-directory: ./volleyball-annotator
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
@@ -40,7 +40,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./video-clipper/dist
+          path: ./volleyball-annotator/dist
 
   deploy:
     environment:

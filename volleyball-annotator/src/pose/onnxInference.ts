@@ -5,7 +5,7 @@ let session: ort.InferenceSession | null = null;
 export async function loadModel(modelPath: string): Promise<void> {
   if (session) return;
 
-  ort.env.wasm.wasmPaths = '/volleyball-clipper/node_modules/onnxruntime-web/dist/';
+  ort.env.wasm.wasmPaths = '/volleyball-annotator/node_modules/onnxruntime-web/dist/';
 
   session = await ort.InferenceSession.create(modelPath, {
     executionProviders: ['wasm'],

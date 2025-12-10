@@ -182,7 +182,7 @@ export function VideoPlayer() {
 
     setIsAnalyzing(true);
     try {
-      await loadModel('/volleyball-clipper/models/yolo11n-pose.onnx');
+      await loadModel('/volleyball-annotator/models/yolo11n-pose.onnx');
 
       const canvas = await captureVideoFrame(video);
       const { tensor, originalWidth, originalHeight } = preprocessFrame(canvas);
