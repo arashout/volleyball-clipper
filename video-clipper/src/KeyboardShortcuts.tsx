@@ -37,6 +37,9 @@ export function KeyboardShortcuts() {
           <ButtonControl keyboardKey="D" label="Delete last/current clip" />
           <ButtonControl keyboardKey="S" label="Export clips JSON" />
         </div>
+        <div className="flex flex-col gap-2">
+          <ButtonControl keyboardKey="P" label="Analyze pose" />
+        </div>
       </div>
     </div>
   );

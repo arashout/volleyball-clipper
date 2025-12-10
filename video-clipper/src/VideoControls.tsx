@@ -10,6 +10,8 @@ interface VideoControlsProps {
   onLoadClips: () => void;
   clipsInputRef: React.RefObject<HTMLInputElement | null>;
   onClipsSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onAnalyzePose?: () => void;
+  isAnalyzing?: boolean;
 }
 
 export function VideoControls({
@@ -22,6 +24,8 @@ export function VideoControls({
   onLoadClips,
   clipsInputRef,
   onClipsSelect,
+  onAnalyzePose,
+  isAnalyzing = false,
 }: VideoControlsProps) {
   return (
     <div className="flex justify-between items-center">
@@ -44,6 +48,15 @@ export function VideoControls({
         >
           Load Clips
         </button>
+        {onAnalyzePose && (
+          <button
+            onClick={onAnalyzePose}
+            disabled={isAnalyzing}
+            className="bg-blue-600 text-white border-none px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          >
+            {isAnalyzing ? 'Analyzing...' : 'Analyze Pose'}
+          </button>
+        )}
       </div>
       <input
         ref={fileInputRef}

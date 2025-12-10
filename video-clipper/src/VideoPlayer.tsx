@@ -6,6 +6,11 @@ import { VideoControls } from './VideoControls';
 import { ClipsList } from './ClipsList';
 import { KeyboardShortcuts } from './KeyboardShortcuts';
 import { saveClipsToLocalStorage, loadClipsFromLocalStorage } from './localStorage';
+import { PoseOverlay } from './components/PoseOverlay';
+import { PersonPose } from './pose/types';
+import { loadModel, runInference } from './pose/onnxInference';
+import { captureVideoFrame, preprocessFrame } from './pose/preprocessing';
+import { parseYOLOPoseOutput } from './pose/postprocessing';
 
 export function VideoPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -19,6 +24,8 @@ export function VideoPlayer() {
   const [currentClip, setCurrentClip] = useState<Clip | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoFileName, setVideoFileName] = useState<string>('clips');
+  const [poseData, setPoseData] = useState<PersonPose[] | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleLoadedVideo = () => {
     const video = videoRef.current;
@@ -56,17 +63,16 @@ export function VideoPlayer() {
       const video = videoRef.current;
       if (!video || !videoSrc) return;
 
-      // Prevent default behavior for keys we're using
-      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD', 'KeyS'].includes(e.code)) {
+      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD', 'KeyS', 'KeyP'].includes(e.code)) {
         e.preventDefault();
       }
 
       switch (e.code) {
         case 'Space':
-          // Play/Pause
           if (isPlaying) {
             video.pause();
           } else {
+            setPoseData(null);
             video.play();
           }
           break;
@@ -119,6 +125,12 @@ export function VideoPlayer() {
           exportClips();
           break;
 
+        case 'KeyP':
+          if (!isAnalyzing) {
+            handlePoseAnalysis();
+          }
+          break;
+
         case 'Comma':
           // Decrease playback speed
           const newSlowerRate = Math.max(0.25, playbackRate - 0.25);
@@ -137,7 +149,7 @@ export function VideoPlayer() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isPlaying, currentClip, clips, playbackRate, videoSrc, videoFileName]);
+  }, [isPlaying, currentClip, clips, playbackRate, videoSrc, videoFileName, isAnalyzing]);
 
   const exportClips = () => {
     const data = JSON.stringify(clips, null, 2);
@@ -159,6 +171,73 @@ export function VideoPlayer() {
     const newClips = clips.filter((_, i) => i !== index);
     setClips(newClips);
     saveClipsToLocalStorage(videoFileName, newClips);
+  };
+
+  const handlePoseAnalysis = async () => {
+    const video = videoRef.current;
+    if (!video || !videoSrc) {
+      alert('Please load a video first');
+      return;
+    }
+
+    setIsAnalyzing(true);
+    try {
+      await loadModel('/volleyball-clipper/models/yolo11n-pose.onnx');
+
+      const canvas = await captureVideoFrame(video);
+      const { tensor, originalWidth, originalHeight } = preprocessFrame(canvas);
+
+      const startTime = performance.now();
+      const output = await runInference(tensor);
+      const inferenceTime = performance.now() - startTime;
+
+      const persons = parseYOLOPoseOutput(output, originalWidth, originalHeight);
+
+      if (persons.length === 0) {
+        alert('No persons detected in this frame');
+        setPoseData(null);
+        return;
+      }
+
+      setPoseData(persons);
+      console.log(`Detected ${persons.length} persons in ${inferenceTime.toFixed(0)}ms`);
+    } catch (error) {
+      console.error('Pose analysis failed:', error);
+      alert('Pose analysis failed. Check console for details.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const exportPoseData = () => {
+    if (!poseData) {
+      alert('No pose data to export');
+      return;
+    }
+
+    const exportData = {
+      videoFileName,
+      analysisTimestamp: Date.now(),
+      frameTime: videoRef.current?.currentTime || 0,
+      results: {
+        timestamp: Date.now(),
+        frameTime: videoRef.current?.currentTime || 0,
+        persons: poseData,
+        inferenceTimeMs: 0
+      }
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${videoFileName}_pose_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const clearPoseOverlay = () => {
+    setPoseData(null);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -222,12 +301,15 @@ export function VideoPlayer() {
         {!videoSrc && (
           <div className="absolute text-white text-xl">No video loaded. Please load a video.</div>
         )}
-        <video
-          ref={videoRef}
-          className="w-[70vw] h-auto"
-          src={videoSrc || ''}
-          controls={false}
-        />
+        <div className="relative" style={{ width: '70vw' }}>
+          <video
+            ref={videoRef}
+            className="w-full h-auto"
+            src={videoSrc || ''}
+            controls={false}
+          />
+          <PoseOverlay videoRef={videoRef} poseData={poseData} />
+        </div>
       </div>
 
       <div className="p-6 bg-gray-800 max-h-[50vh] overflow-y-auto space-y-6">
@@ -241,6 +323,8 @@ export function VideoPlayer() {
           onLoadClips={openClipsPicker}
           clipsInputRef={clipsInputRef}
           onClipsSelect={handleClipsLoad}
+          onAnalyzePose={handlePoseAnalysis}
+          isAnalyzing={isAnalyzing}
         />
 
         <VideoTimeline
@@ -257,6 +341,26 @@ export function VideoPlayer() {
         )}
 
         <KeyboardShortcuts />
+
+        {poseData && poseData.length > 0 && (
+          <div className="border-t border-gray-700 pt-6">
+            <h3 className="pb-2 text-lg">Pose Analysis ({poseData.length} persons detected)</h3>
+            <div className="flex gap-2">
+              <button
+                onClick={exportPoseData}
+                className="bg-white text-black border-none px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-300"
+              >
+                Export Pose Data
+              </button>
+              <button
+                onClick={clearPoseOverlay}
+                className="bg-gray-900 text-white border border-gray-700 px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-950"
+              >
+                Clear Overlay
+              </button>
+            </div>
+          </div>
+        )}
 
         <ClipsList
           clips={clips}

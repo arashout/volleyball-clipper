@@ -9,7 +9,8 @@
       "Bash(npm run build:*)",
       "Bash(npx tsc:*)",
       "Bash(git remote:*)",
-      "WebFetch(domain:arashout.github.io)"
+      "WebFetch(domain:arashout.github.io)",
+      "WebSearch"
     ],
     "deny": [
       "Bash(git:commit:*)",
