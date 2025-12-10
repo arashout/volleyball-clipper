@@ -2,7 +2,7 @@ import { formatTime } from './utils';
 import { useVideoPlayer } from './useVideoPlayer';
 
 export function ClipsList() {
-  const { clips, exportClips, clearClips, deleteClip, seekToTime } = useVideoPlayer();
+  const { clips, exportData, clearClips, deleteClip, seekToTime } = useVideoPlayer();
 
   if (clips.length === 0) return null;
 
@@ -11,10 +11,10 @@ export function ClipsList() {
       <h3 className="pb-2 text-lg">Clips ({clips.length})</h3>
       <div className="flex gap-2 pb-4">
         <button
-          onClick={exportClips}
+          onClick={exportData}
           className="bg-white text-black border-none px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-300"
         >
-          Export Clips JSON
+          Export Data
         </button>
         <button
           onClick={clearClips}

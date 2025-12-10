@@ -1,38 +1,41 @@
-import { Clip } from './types';
+import { Clip, ActionAnnotation } from './types';
 
-const CLIPS_STORAGE_PREFIX = 'clips_';
-const CLIPS_TTL = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
+const STORAGE_PREFIX = 'video_data_';
+const STORAGE_TTL = 7 * 24 * 60 * 60 * 1000; // 1 week in milliseconds
 
-interface StoredClips {
+export interface VideoData {
   clips: Clip[];
+  annotations: ActionAnnotation[];
+}
+
+interface StoredVideoData extends VideoData {
   timestamp: number;
 }
 
-export const saveClipsToLocalStorage = (videoName: string, clips: Clip[]) => {
-  const data: StoredClips = {
-    clips,
+export const saveVideoData = (videoName: string, data: VideoData) => {
+  const stored: StoredVideoData = {
+    ...data,
     timestamp: Date.now(),
   };
-  localStorage.setItem(CLIPS_STORAGE_PREFIX + videoName, JSON.stringify(data));
+  localStorage.setItem(STORAGE_PREFIX + videoName, JSON.stringify(stored));
 };
 
-export const loadClipsFromLocalStorage = (videoName: string): Clip[] | null => {
-  const stored = localStorage.getItem(CLIPS_STORAGE_PREFIX + videoName);
+export const loadVideoData = (videoName: string): VideoData | null => {
+  const stored = localStorage.getItem(STORAGE_PREFIX + videoName);
   if (!stored) return null;
 
   try {
-    const data: StoredClips = JSON.parse(stored);
+    const data: StoredVideoData = JSON.parse(stored);
     const age = Date.now() - data.timestamp;
 
-    // Check if data is expired
-    if (age > CLIPS_TTL) {
-      localStorage.removeItem(CLIPS_STORAGE_PREFIX + videoName);
+    if (age > STORAGE_TTL) {
+      localStorage.removeItem(STORAGE_PREFIX + videoName);
       return null;
     }
 
-    return data.clips;
+    return { clips: data.clips, annotations: data.annotations };
   } catch (error) {
-    console.error('Error loading clips from localStorage:', error);
+    console.error('Error loading video data from localStorage:', error);
     return null;
   }
 };

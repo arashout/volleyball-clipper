@@ -1,4 +1,7 @@
-- [ ] Save annotations locally per clip
-- [ ] Export Annotations in YOLO format
+- [x] Save annotations locally per clip
+- [x] Export Annotations in YOLO format
+- [ ] Export video details as well, then maybe we don't need YOLO format
 - [ ] Fix bug with backwards button
+- [ ] Playback should pause when doing annotation
+- [ ] Actually test annotation with frame
 - [ ] Move labels / clips to sidebar
