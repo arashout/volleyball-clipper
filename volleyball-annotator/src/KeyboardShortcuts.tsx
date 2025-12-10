@@ -1,3 +1,5 @@
+import { ACTION_LABELS } from './annotations';
+
 function ButtonControl({
   keyboardKey,
   label,
@@ -38,7 +40,10 @@ export function KeyboardShortcuts() {
           <ButtonControl keyboardKey="S" label="Export clips JSON" />
         </div>
         <div className="flex flex-col gap-2">
-          <ButtonControl keyboardKey="P" label="Analyze pose" />
+          <ButtonControl keyboardKey="P" label="Toggle pose analysis" />
+          {ACTION_LABELS.map((label, idx) => (
+            <ButtonControl key={label} keyboardKey={String(idx + 1)} label={`Label: ${label}`} />
+          ))}
         </div>
       </div>
     </div>

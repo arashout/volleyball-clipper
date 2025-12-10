@@ -10,7 +10,8 @@
       "Bash(npx tsc:*)",
       "Bash(git remote:*)",
       "WebFetch(domain:arashout.github.io)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(find:*)"
     ],
     "deny": [
       "Bash(git:commit:*)",

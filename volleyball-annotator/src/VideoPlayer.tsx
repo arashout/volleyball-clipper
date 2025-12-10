@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Clip } from './types';
+import { Clip, ActionAnnotation } from './types';
 import { formatTime } from './utils';
 import { VideoTimeline } from './VideoTimeline';
 import { VideoControls } from './VideoControls';
@@ -11,11 +11,13 @@ import { PersonPose } from './pose/types';
 import { loadModel, runInference } from './pose/onnxInference';
 import { captureVideoFrame, preprocessFrame } from './pose/preprocessing';
 import { parseYOLOPoseOutput } from './pose/postprocessing';
+import { ACTION_LABELS } from './annotations';
 
 export function VideoPlayer() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const clipsInputRef = useRef<HTMLInputElement>(null);
+  const poseCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -26,6 +28,13 @@ export function VideoPlayer() {
   const [videoFileName, setVideoFileName] = useState<string>('clips');
   const [poseData, setPoseData] = useState<PersonPose[] | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [continuousPoseAnalysis, setContinuousPoseAnalysis] = useState(false);
+  const [pendingLabel, setPendingLabel] = useState<string | null>(null);
+  const [actionAnnotations, setActionAnnotations] = useState<ActionAnnotation[]>([]);
+  const [isMuted, setIsMuted] = useState(false);
+  const [slowOnPendingLabel, setSlowOnPendingLabel] = useState(true);
+  const [showSkeletons, setShowSkeletons] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
 
   const handleLoadedVideo = () => {
     const video = videoRef.current;
@@ -63,8 +72,33 @@ export function VideoPlayer() {
       const video = videoRef.current;
       if (!video || !videoSrc) return;
 
-      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD', 'KeyS', 'KeyP'].includes(e.code)) {
+      if (['Space', 'ArrowLeft', 'ArrowRight', 'KeyI', 'KeyO', 'KeyD', 'KeyS', 'KeyP', 'Escape', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6'].includes(e.code)) {
         e.preventDefault();
+      }
+
+      if (e.code === 'Escape') {
+        if (pendingLabel) {
+          setPendingLabel(null);
+        }
+        return;
+      }
+
+      if (e.code === 'Space' && pendingLabel) {
+        setPendingLabel(null);
+        video.play();
+        return;
+      }
+
+      if (e.code.startsWith('Digit')) {
+        const labelIndex = parseInt(e.code.replace('Digit', '')) - 1;
+        if (labelIndex >= 0 && labelIndex < ACTION_LABELS.length) {
+          const label = ACTION_LABELS[labelIndex];
+          setPendingLabel(label);
+          if (!isAnalyzing && !poseData) {
+            handlePoseAnalysis();
+          }
+          return;
+        }
       }
 
       switch (e.code) {
@@ -72,7 +106,6 @@ export function VideoPlayer() {
           if (isPlaying) {
             video.pause();
           } else {
-            setPoseData(null);
             video.play();
           }
           break;
@@ -126,9 +159,7 @@ export function VideoPlayer() {
           break;
 
         case 'KeyP':
-          if (!isAnalyzing) {
-            handlePoseAnalysis();
-          }
+          setContinuousPoseAnalysis(prev => !prev);
           break;
 
         case 'Comma':
@@ -149,7 +180,45 @@ export function VideoPlayer() {
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isPlaying, currentClip, clips, playbackRate, videoSrc, videoFileName, isAnalyzing]);
+  }, [isPlaying, currentClip, clips, playbackRate, videoSrc, videoFileName, isAnalyzing, pendingLabel, poseData]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (pendingLabel && slowOnPendingLabel) {
+      video.playbackRate = 0.25;
+    } else {
+      video.playbackRate = playbackRate;
+    }
+  }, [pendingLabel, slowOnPendingLabel, playbackRate]);
+
+  useEffect(() => {
+    if (!continuousPoseAnalysis) {
+      clearPoseOverlay();
+      return;
+    }
+    if (!videoSrc) return;
+
+    const runContinuousAnalysis = async () => {
+      if (isAnalyzing) return;
+      await handlePoseAnalysis();
+    };
+
+    runContinuousAnalysis();
+
+    const video = videoRef.current;
+    if (!video) return;
+
+    const handleSeeked = () => {
+      if (continuousPoseAnalysis && !isAnalyzing) {
+        handlePoseAnalysis();
+      }
+    };
+
+    video.addEventListener('seeked', handleSeeked);
+    return () => video.removeEventListener('seeked', handleSeeked);
+  }, [continuousPoseAnalysis, videoSrc, currentTime]);
 
   const exportClips = () => {
     const data = JSON.stringify(clips, null, 2);
@@ -209,35 +278,49 @@ export function VideoPlayer() {
     }
   };
 
-  const exportPoseData = () => {
-    if (!poseData) {
-      alert('No pose data to export');
-      return;
-    }
-
-    const exportData = {
-      videoFileName,
-      analysisTimestamp: Date.now(),
-      frameTime: videoRef.current?.currentTime || 0,
-      results: {
-        timestamp: Date.now(),
-        frameTime: videoRef.current?.currentTime || 0,
-        persons: poseData,
-        inferenceTimeMs: 0
-      }
-    };
-
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${videoFileName}_pose_${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
   const clearPoseOverlay = () => {
     setPoseData(null);
+    setPendingLabel(null);
+    
+    const canvas = poseCanvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  };
+
+  const handlePersonClick = (personIndex: number) => {
+    if (!pendingLabel || !poseData || !videoRef.current) return;
+
+    const person = poseData[personIndex];
+    const annotation: ActionAnnotation = {
+      time: videoRef.current.currentTime,
+      label: pendingLabel,
+      bbox: {
+        x: person.bbox.x,
+        y: person.bbox.y,
+        width: person.bbox.width,
+        height: person.bbox.height,
+      },
+    };
+
+    setActionAnnotations(prev => [...prev, annotation]);
+    setPendingLabel(null);
+  };
+
+  const handleCustomBboxDraw = (bbox: { x: number; y: number; width: number; height: number }) => {
+    if (!pendingLabel || !videoRef.current) return;
+
+    const annotation: ActionAnnotation = {
+      time: videoRef.current.currentTime,
+      label: pendingLabel,
+      bbox,
+    };
+
+    setActionAnnotations(prev => [...prev, annotation]);
+    setPendingLabel(null);
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -295,28 +378,46 @@ export function VideoPlayer() {
     }
   };
 
+  const toggleMute = () => {
+    if (videoRef.current) {
+      videoRef.current.muted = !isMuted;
+      setIsMuted(!isMuted);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-gray-900 text-white">
-      <div className="flex-1 flex justify-center items-center bg-black p-8">
+      <div className="flex-1 flex justify-center items-center bg-black p-4">
         {!videoSrc && (
           <div className="absolute text-white text-xl">No video loaded. Please load a video.</div>
         )}
         <div className="relative" style={{ width: '70vw' }}>
           <video
             ref={videoRef}
-            className="w-full h-auto"
+            className="max-w-full w-full max-h-[80vh]"
             src={videoSrc || ''}
             controls={false}
           />
-          <PoseOverlay videoRef={videoRef} poseData={poseData} />
+          <PoseOverlay
+            videoRef={videoRef}
+            poseData={poseData}
+            showSkeletons={showSkeletons}
+            showLabels={showLabels}
+            pendingLabel={pendingLabel}
+            onPersonClick={handlePersonClick}
+            onCustomBboxDraw={handleCustomBboxDraw}
+            canvasRef={poseCanvasRef}
+          />
         </div>
       </div>
 
-      <div className="p-6 bg-gray-800 max-h-[50vh] overflow-y-auto space-y-6">
+      <div className="p-6 bg-gray-800 overflow-y-auto space-y-6">
         <VideoControls
           currentTime={currentTime}
           duration={duration}
           playbackRate={playbackRate}
+          isMuted={isMuted}
+          onToggleMute={toggleMute}
           onLoadVideo={openFilePicker}
           fileInputRef={fileInputRef}
           onFileSelect={handleFileSelect}
@@ -325,20 +426,54 @@ export function VideoPlayer() {
           onClipsSelect={handleClipsLoad}
           onAnalyzePose={handlePoseAnalysis}
           isAnalyzing={isAnalyzing}
+          slowOnPendingLabel={slowOnPendingLabel}
+          onToggleSlowOnPendingLabel={() => setSlowOnPendingLabel(v => !v)}
+          showSkeletons={showSkeletons}
+          onToggleShowSkeletons={() => setShowSkeletons(v => !v)}
+          showLabels={showLabels}
+          onToggleShowLabels={() => setShowLabels(v => !v)}
         />
 
         <VideoTimeline
           currentTime={currentTime}
           duration={duration}
           clips={clips}
+          actionAnnotations={actionAnnotations}
           onSeek={seekToTime}
         />
 
         {currentClip && (
           <div className="bg-white text-black p-3 rounded font-bold">
-            📍 Clip start: {formatTime(currentClip.startTime)} (Press 'O' to mark end)
+            Clip start: {formatTime(currentClip.startTime)} (Press 'O' to mark end)
           </div>
         )}
+
+        <div className="flex gap-2 items-center">
+          <span className="text-sm">Labels:</span>
+          {ACTION_LABELS.map((label, idx) => (
+            <button
+              key={label}
+              onClick={() => {
+                setPendingLabel(label);
+                if (!isAnalyzing && !poseData) {
+                  handlePoseAnalysis();
+                }
+              }}
+              className={`px-3 py-1 rounded text-sm font-mono ${
+                pendingLabel === label
+                  ? 'bg-yellow-500 text-black'
+                  : 'bg-gray-700 hover:bg-gray-600'
+              }`}
+            >
+              {idx + 1}: {label}
+            </button>
+          ))}
+          {pendingLabel && (
+            <span className="ml-4 text-yellow-400 font-bold">
+              Click a person or draw a box to label as "{pendingLabel}"
+            </span>
+          )}
+        </div>
 
         <KeyboardShortcuts />
 
@@ -346,12 +481,6 @@ export function VideoPlayer() {
           <div className="border-t border-gray-700 pt-6">
             <h3 className="pb-2 text-lg">Pose Analysis ({poseData.length} persons detected)</h3>
             <div className="flex gap-2">
-              <button
-                onClick={exportPoseData}
-                className="bg-white text-black border-none px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-300"
-              >
-                Export Pose Data
-              </button>
               <button
                 onClick={clearPoseOverlay}
                 className="bg-gray-900 text-white border border-gray-700 px-5 py-2.5 rounded cursor-pointer font-bold hover:bg-gray-950"

@@ -1,14 +1,25 @@
 import { useRef } from 'react';
-import { Clip } from './types';
+import { Clip, ActionAnnotation } from './types';
+import { ACTION_LABELS } from './annotations';
+
+const LABEL_COLORS: Record<string, string> = {
+  ball: '#f59e0b',
+  block: '#ef4444',
+  receive: '#22c55e',
+  set: '#3b82f6',
+  spike: '#a855f7',
+  serve: '#ec4899',
+};
 
 interface VideoTimelineProps {
   currentTime: number;
   duration: number;
   clips: Clip[];
+  actionAnnotations: ActionAnnotation[];
   onSeek: (time: number) => void;
 }
 
-export function VideoTimeline({ currentTime, duration, clips, onSeek }: VideoTimelineProps) {
+export function VideoTimeline({ currentTime, duration, clips, actionAnnotations, onSeek }: VideoTimelineProps) {
   const timelineRef = useRef<HTMLDivElement>(null);
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -54,12 +65,51 @@ export function VideoTimeline({ currentTime, duration, clips, onSeek }: VideoTim
           );
         })}
 
+        {/* Action annotation markers */}
+        {actionAnnotations.map((annotation, index) => {
+          if (duration === 0) return null;
+          const posPercent = (annotation.time / duration) * 100;
+          const color = LABEL_COLORS[annotation.label] || '#ffffff';
+
+          return (
+            <div
+              key={index}
+              className="absolute top-0 w-2 h-full"
+              style={{
+                left: `${posPercent}%`,
+                backgroundColor: color,
+                transform: 'translateX(-50%)',
+              }}
+              title={`${annotation.label} @ ${annotation.time.toFixed(2)}s`}
+            />
+          );
+        })}
+
         {/* Current time indicator */}
         <div
           className="absolute top-0 w-1 h-full bg-white"
           style={{ left: `${progressPercentage}%` }}
         />
       </div>
+
+      {/* Legend for action labels */}
+      {actionAnnotations.length > 0 && (
+        <div className="flex gap-3 text-xs mt-1">
+          {ACTION_LABELS.map((label) => {
+            const count = actionAnnotations.filter(a => a.label === label).length;
+            if (count === 0) return null;
+            return (
+              <div key={label} className="flex items-center gap-1">
+                <div
+                  className="w-3 h-3 rounded"
+                  style={{ backgroundColor: LABEL_COLORS[label] }}
+                />
+                <span>{label}: {count}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
